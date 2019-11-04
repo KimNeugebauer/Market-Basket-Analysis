@@ -4,6 +4,8 @@ library(DBI)
 library(RMySQL)
 library(dplyr)
 library(ggplot2)
+library(arules)
+
 
 # 2. Connecting to db
 db_user <- 'data_student_berlin'
@@ -66,6 +68,8 @@ head(join_full)
 View(join_full)
 
 
+## filtering out non completed orders
+
 join_full <- join_full %>%  
               filter(join_full$state == "Completed")
 
@@ -73,6 +77,7 @@ summary(join_full)
 dim(join_full)
 
 ## create column with unit price * quantity
+
 join_full <- join_full %>% 
   mutate(Paid_per_product = unit_price * product_quantity)
 
@@ -90,20 +95,47 @@ diff_table <- join_full %>%
   filter(ratio < 0.2)
 
 
-## filtering out of line_item the relevant id_order
+## creating out of line_item a table that contains only relevant rows for id_order
 
 final_table <- line_item[line_item$id_order %in% diff_table$id_order, ]
 
 
-kim[kim$a %in% sunny, ]
+## taking only id_order and sku into the transactional file
+
+transactional_file <- final_table
+
+transactional_file$product_quantity <- NULL
+transactional_file$id <- NULL
+transactional_file$unit_price <- NULL
+transactional_file$date <- NULL
+
+View(transactional_file)
 
 
+## transforming transactional file using read.transactions
 
-summary(diff_table$diff_total_paid)
-str(diff_table)
+write.csv(transactional_file, 
+          file = "transactional_file.csv",
+          row.names=FALSE)
+
+
+large_transactions <- read.transactions(
+  "transactional_file.csv",
+  format = "single",
+  cols = c(1,2),
+  header = TRUE,
+  sep = ","
+)
+
+
+large_transactions
+inspect(head(large_transactions))
 
 
 ## exploring difference in total paid
+
+summary(diff_table$diff_total_paid)
+str(diff_table)
 
 hist(diff_table$diff_total_paid, 
      main ="Histogram of the difference in total amount paid",
@@ -116,16 +148,9 @@ ggplot(join_full, mapping = aes(y=diff_table$diff_total_paid, x=total_paid)) +
         geom_jitter()
 
 
-## calculating difference in price
-
-diff_table2 <- diff_table %>% 
-  mutate(diff_price = abs(products$price-unit_price))
-
-str(diff_table2)
-summary(join_full)
 
 
-## plots and histograms
+## more plots and histograms
 
 hist(diff_table2$diff_price,
      main ="Histogram of the difference in price")
@@ -147,13 +172,6 @@ ggplot(excl_outl, mapping = aes(x=diff_price, y=diff_total_paid)) +
 full_table <- diff_table2 %>% filter(diff_total_paid < 5000 & total_paid < 6000)
 full_table <- full_table %>% filter(price_ratio < 20 & total_ratio < 0.2)
 
-
-## calculating ratio of total paid
-
-full_table <- full_table %>% mutate(total_ratio= 
-                                    (diff_total_paid / total_paid)*100)
-
-hist(full_table$total_ratio)
 
 
 ## comparing the ratios
