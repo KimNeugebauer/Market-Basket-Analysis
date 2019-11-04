@@ -1,0 +1,139 @@
+---
+title: "Data Cleaning and Pre-Processing - Market Basket Analysis"
+author: "KimN"
+date: "4 11 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Data and Libraries
+
+```{r loading data}
+### Connecting data base and checking data
+
+library(DBI)
+library(RMySQL)
+library(dplyr)
+library(ggplot2)
+library(arules)
+
+
+# 2. Connecting to db
+db_user <- 'data_student_berlin'
+db_password <- 'waai_has_shitty_internet'
+db_name <- 'pricehub'
+db_host <- '34.89.228.59' # for local access
+db_port <- 3306
+mydb <-  dbConnect(MySQL(), user = db_user, password = db_password,
+                   dbname = db_name, host = db_host, port = db_port)
+
+# 3. Read data from db
+db_table <- 'line_item'
+s <- paste0("select * from ", db_table)
+rs <- dbSendQuery(mydb, s)
+line_item <-  fetch(rs, n = -1)
+
+##Import df 'orders'
+db_table <- 'orders'
+s <- paste0("select * from ", db_table)
+rs <- dbSendQuery(mydb, s)
+orders <-  fetch(rs, n = -1)
+
+##Import df 'products'
+db_table <- 'products'
+s <- paste0("select * from ", db_table)
+rs <- dbSendQuery(mydb, s)
+products <-  fetch(rs, n = -1)
+on.exit(dbDisconnect(mydb))
+```
+
+# Data Cleaning and filtering
+
+```{r factoring, eval = FALSE, message = FALSE}
+
+as.factor(orders$state)
+```
+
+```{r data cleaning}
+## joining line item and orders
+
+join1 <- inner_join(line_item, orders, by="id_order")
+
+head(join1)
+
+
+## joining previous with products
+
+join_full <- inner_join(join1, products, by="sku")
+
+
+## filtering out non completed orders
+
+join_full <- join_full %>%  
+              filter(join_full$state == "Completed")
+
+summary(join_full)
+dim(join_full)
+
+## create column with unit price * quantity
+
+join_full <- join_full %>% 
+  mutate(Paid_per_product = unit_price * product_quantity)
+
+
+## grouping by id_order
+## calculating difference in the total amount paid
+## keeping only orders with price diff/total paid < 0.2
+
+diff_table <- join_full %>% 
+  group_by(id_order) %>%
+  summarise(paid_per_order = sum(Paid_per_product),
+            total_paid = mean(total_paid)) %>% 
+  mutate(diff_total_paid = abs(total_paid-paid_per_order),
+         ratio = diff_total_paid/total_paid) %>% 
+  filter(ratio < 0.2)
+
+
+## creating out of line_item a table that contains only relevant rows for id_order
+
+final_table <- line_item[line_item$id_order %in% diff_table$id_order, ]
+```
+
+# Creating the transactional file
+
+```{r transactional file}
+
+## taking only id_order and sku into the transactional file
+
+transactional_file <- final_table
+
+transactional_file$product_quantity <- NULL
+transactional_file$id <- NULL
+transactional_file$unit_price <- NULL
+transactional_file$date <- NULL
+
+View(transactional_file)
+
+
+## transforming transactional file using read.transactions
+
+write.csv(transactional_file, 
+          file = "transactional_file.csv",
+          row.names=FALSE)
+
+
+large_transactions <- read.transactions(
+  "transactional_file.csv",
+  format = "single",
+  cols = c(1,2),
+  header = TRUE,
+  sep = ","
+)
+
+large_transactions
+inspect(head(large_transactions))
+```
+
