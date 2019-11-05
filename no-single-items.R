@@ -71,9 +71,9 @@ View(join_full)
 ## filtering out non completed orders
 
 join_full <- join_full %>%  
-              filter(join_full$state == "Completed" | 
-                     join_full$state == "Pending" |
-                     join_full$state == "Place order")
+  filter(join_full$state == "Completed" | 
+           join_full$state == "Pending" |
+           join_full$state == "Place order")
 
 summary(join_full)
 dim(join_full)
@@ -159,7 +159,7 @@ itemFrequencyPlot(large_not1,
                   topN = 15, 
                   type = c("absolute"), col = rainbow(30)
                   #horiz = TRUE
-                  )
+)
 
 
 image(large_not1)
@@ -184,53 +184,6 @@ inspect(frequentItems)
 
 
 ## checking confidence and lift
-             
 
-
-
-
-## exploring difference in total paid
-
-hist(diff_table$diff_total_paid, 
-     main ="Histogram of the difference in total amount paid",
-     breaks = 20, xlim = c(-1000,3000))
-
-ggplot(join_full, mapping = aes(diff_table$diff_total_paid)) + 
-        geom_histogram()
-
-ggplot(join_full, mapping = aes(y=diff_table$diff_total_paid, x=total_paid)) + 
-        geom_jitter()
-
-
-
-
-## more plots and histograms
-
-hist(diff_table2$diff_price,
-     main ="Histogram of the difference in price")
-
-ggplot(diff_table2, mapping = aes(diff_price)) + 
-  geom_histogram()
-
-ggplot(diff_table2, mapping = aes(x=diff_price, y=diff_total_paid)) + 
-  geom_jitter()
-
-
-## excluding outliers
-
-excl_outl <- diff_table2 %>% filter(diff_total_paid < 5000)
-
-ggplot(excl_outl, mapping = aes(x=diff_price, y=diff_total_paid)) + 
-  geom_jitter()
-
-full_table <- diff_table2 %>% filter(diff_total_paid < 5000 & total_paid < 6000)
-full_table <- full_table %>% filter(price_ratio < 20 & total_ratio < 0.2)
-
-
-
-## comparing the ratios
-
-summary(full_table$total_ratio)
-ggplot(full_table, mapping = aes(x=price_ratio, y=total_ratio)) + geom_jitter()
 
 
