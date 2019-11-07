@@ -1,10 +1,11 @@
-### Connecting data base and checking data
+### Connecting data base and loading libraries
 
 library(DBI)
 library(RMySQL)
 library(dplyr)
 library(ggplot2)
 library(arules)
+
 
 
 # 2. Connecting to db
@@ -36,6 +37,7 @@ products <-  fetch(rs, n = -1)
 on.exit(dbDisconnect(mydb))
 
 
+
 ## exploring tables
 
 str(line_item)
@@ -45,12 +47,14 @@ summary(products)
 summary(line_item)
 
 
+
 ## filtering out all not completed orders
 
 orders %>% filter(orders$state == "Cancelled")
 orders %>%  filter(orders$state != "Cancelled")
 
 as.factor(orders$state)
+
 
 
 ## joining line item and orders
@@ -65,18 +69,20 @@ head(join1)
 join_full <- inner_join(join1, products, by="sku")
 
 head(join_full)
-View(join_full)
+
 
 
 ## filtering out non completed orders
 
 join_full <- join_full %>%  
-              filter(join_full$state == "Completed" | 
-                     join_full$state == "Pending" |
-                     join_full$state == "Place order")
+  filter(join_full$state == "Completed" | 
+           join_full$state == "Pending" |
+           join_full$state == "Place order")
 
 summary(join_full)
 dim(join_full)
+
+
 
 ## create column with unit price * quantity
 
@@ -84,22 +90,25 @@ join_full <- join_full %>%
   mutate(Paid_per_product = unit_price * product_quantity)
 
 
+
 ## grouping by id_order
 ## calculating difference in the total amount paid
-## keeping only orders where the ratio of price diff/total paid < 0.3
+## keeping only orders with price diff/total paid < 0.2
 
 diff_table <- join_full %>% 
   group_by(id_order) %>%
   summarise(paid_per_order = sum(Paid_per_product),
             total_paid = mean(total_paid)) %>% 
-  mutate(diff_total_paid = abs(total_paid - paid_per_order),
+  mutate(diff_total_paid = abs(total_paid-paid_per_order),
          ratio = diff_total_paid/total_paid) %>% 
   filter(ratio < 0.3)
+
 
 
 ## creating out of line_item a table that contains only relevant rows for id_order
 
 final_table <- line_item[line_item$id_order %in% diff_table$id_order, ]
+
 
 
 ## taking only id_order and sku into the transactional file
@@ -114,6 +123,7 @@ transactional_file$date <- NULL
 View(transactional_file)
 
 
+
 ## excluding transactions of size 1
 
 not1 <- transactional_file %>% 
@@ -123,69 +133,135 @@ not1 <- transactional_file %>%
 
 not1 <- not1 %>% filter(n != 1)
 
-transactions_not1 <- transactional_file[transactional_file$id_order %in% 
-                                          not1$id_order, ]
+transactions_not1 <- 
+      transactional_file[transactional_file$id_order %in% 
+                           not1$id_order, ]
+
+
+## joining with products table 
+
+transactions_not1_brand <- transactions_not1 %>% 
+  left_join(products, by ="sku")
+
+
+## exchanging sku with brand-categories
+
+transactions_not1_brand$brand_cat <- 
+      paste(transactions_not1_brand$brand, 
+            transactions_not1_brand$manual_categories)
+
+transactions_not1_brand <- transactions_not1_brand %>% 
+  select(id_order,brand_cat)
+
+
+
+## deleting missing values
+
+sum(is.na(transactions_not1_brand))
+transactions_not1_brand <- na.omit(transactions_not1_brand)
+
 
 
 ## transforming transactional file using read.transactions
 
-write.csv(transactions_not1, 
-          file = "transactions_not1.csv",
+write.csv(transactions_not1_brand, 
+          file = "transactions_not1_brand.csv",
           row.names=FALSE)
 
 
-large_trans_not1 <- read.transactions(
-  "transactions_not1.csv",
-  format = "single",
+large_trans_not1_brand <- read.transactions(
+  "transactions_not1_brand.csv",
+  format = "single", header = TRUE,
   cols = c(1,2),
-  header = TRUE,
   sep = ","
 )
 
 
 ## Getting to know the large transactions file
 
-large_trans_not1
-inspect(head(large_trans_not1))
-length(large_trans_not1)
-LIST(head(large_trans_not1))
-size(head(large_trans_not1, 300))
+large_trans_not1_brand
+inspect(head(large_trans_not1_brand))
+LIST(head(large_trans_not1_brand))
+size(head(large_trans_not1_brand, 300))
 
 
 ## Plotting and imaging the large transactions file
 
-itemFrequencyPlot(large_trans_not1)
-itemFrequencyPlot(large_trans_not1, 
+itemFrequencyPlot(large_trans_not1_brand)
+
+itemFrequencyPlot(large_trans_not1_brand, 
                   topN = 15, 
-                  type = c("absolute"), col = rainbow(30)
-                  #horiz = TRUE
-                  )
+                  type = c("absolute"), 
+                  col = rainbow(20),
+                  horiz = TRUE,
+                  xlab = "Item Frequency, absolute"
+)
 
 
-image(large_trans_not1)
+image(large_trans_not1_brand)
+
+
+## Cross Table of items purchased together (also testing Chi-Squared)
+
+cross_table <- crossTable(large_trans_not1_brand, 
+                          sort = TRUE)
+
+View(cross_table)
+cross_table[1:5,1:5]
+
+
+cross_table_chi <- 
+    crossTable(large_trans_not1_brand, 
+               measure = "chi")["Apple accessories","Apple smartphone"]
+
+cross_table_chi
 
 
 
 ## applying the apriori algorithm
 
-rules <- apriori(large_not1, 
+rules <- apriori(large_trans_not1_brand, 
                  parameter = list(supp = 0.001,   # 17 rules
                                   conf = 0.6, 
                                   target = "rules"))
 
-rules <- apriori(large_not1, 
-                 parameter = list(supp = 0.0005,   # 59 rules
+rules <- apriori(large_trans_not1_brand, 
+                 parameter = list(supp = 0.0005,   # 57 rules
                                   conf = 0.5, 
                                   target = "rules"))
 
 inspect(rules[1:10])
+
 summary(rules)
 str(rules)
 
 
-frequentItems <- eclat (large_not1, parameter = list(supp = 0.01, maxlen = 15))
+## applying the apriori algorithm for rules that lead to buying apple accessories
 
-inspect(frequentItems)
+rules_apple_acc <- apriori(large_trans_not1_brand, 
+                          parameter = list(supp = 0.0005,   # 57 rules
+                                  conf = 0.5, 
+                                  target = "rules"),
+                          appearance = list(rhs = "Apple accessories", 
+                                   default = "lhs"))
+
+
+inspect(rules_apple_acc)
+
+summary(rules_apple_acc)
+str(rules_apple_acc)
+
+
+## frequent items
+
+frequentItems <- eclat (large_trans_not1_brand, 
+                        parameter = list(supp = 0.01, maxlen = 15))
+
+inspect(sort(frequentItems, 
+             decreasing = TRUE, 
+             by = "support")[1:10])
+
+View(frequentItems)
 
 
 
@@ -196,51 +272,4 @@ inspect(rules_conf[1:10])
 
 rules_lift <- sort(rules, by = "lift", desc = TRUE)
 inspect(rules_lift[1:10])
-
-
-
-## exploring difference in total paid
-
-hist(diff_table$diff_total_paid, 
-     main ="Histogram of the difference in total amount paid",
-     breaks = 20, xlim = c(-1000,3000))
-
-ggplot(join_full, mapping = aes(diff_table$diff_total_paid)) + 
-        geom_histogram()
-
-ggplot(join_full, mapping = aes(y=diff_table$diff_total_paid, x=total_paid)) + 
-        geom_jitter()
-
-
-
-
-## more plots and histograms
-
-hist(diff_table2$diff_price,
-     main ="Histogram of the difference in price")
-
-ggplot(diff_table2, mapping = aes(diff_price)) + 
-  geom_histogram()
-
-ggplot(diff_table2, mapping = aes(x=diff_price, y=diff_total_paid)) + 
-  geom_jitter()
-
-
-## excluding outliers
-
-excl_outl <- diff_table2 %>% filter(diff_total_paid < 5000)
-
-ggplot(excl_outl, mapping = aes(x=diff_price, y=diff_total_paid)) + 
-  geom_jitter()
-
-full_table <- diff_table2 %>% filter(diff_total_paid < 5000 & total_paid < 6000)
-full_table <- full_table %>% filter(price_ratio < 20 & total_ratio < 0.2)
-
-
-
-## comparing the ratios
-
-summary(full_table$total_ratio)
-ggplot(full_table, mapping = aes(x=price_ratio, y=total_ratio)) + geom_jitter()
-
 

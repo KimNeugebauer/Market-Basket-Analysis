@@ -126,64 +126,102 @@ not1 <- not1 %>% filter(n != 1)
 transactions_not1 <- transactional_file[transactional_file$id_order %in% 
                                           not1$id_order, ]
 
+## exchanging sku with name of products
+
+transactions_not1_name <- transactions_not1 %>% 
+        left_join(products, by ="sku")
+
+
+transactions_not1_name <- transactions_not1_name %>% 
+        select(id_order,name_en)
+
+
+## deleting missing values
+
+sum(is.na(transactions_not1_name))
+transactions_not1_name <- na.omit(transactions_not1_name)
+
+
 
 ## transforming transactional file using read.transactions
 
-write.csv(transactions_not1, 
-          file = "transactions_not1.csv",
+write.csv(transactions_not1_name, 
+          file = "transactions_not1_name.csv",
           row.names=FALSE)
 
 
-large_not1 <- read.transactions(
-  "transactions_not1.csv",
-  format = "single",
-  cols = c(1,2),
-  header = TRUE,
+large_trans_not1_name <- read.transactions(
+  "transactions_not1_name.csv",
+  format = "single", header = TRUE,
+  cols = c("id_order","name_en"),
   sep = ","
 )
 
 
 ## Getting to know the large transactions file
 
-large_not1
-inspect(head(large_not1))
-length(large_transactions)
-LIST(head(large_not1))
-size(head(large_not1, 300))
+large_trans_not1_name
+inspect(head(large_trans_not1_name))
+length(large_trans_not1)
+LIST(head(large_trans_not1_name))
+size(head(large_trans_not1_name, 300))
 
 
 ## Plotting and imaging the large transactions file
 
-itemFrequencyPlot(large_not1)
-itemFrequencyPlot(large_not1, 
+itemFrequencyPlot(large_trans_not1_name)
+
+itemFrequencyPlot(large_trans_not1_name, 
                   topN = 15, 
-                  type = c("absolute"), col = rainbow(30)
-                  #horiz = TRUE
+                  type = c("absolute"), 
+                  col = rainbow(20),
+                  horiz = TRUE,
+                  xlab = "Item Frequency, absolute"
 )
 
 
-image(large_not1)
+image(large_trans_not1_name)
+
+cross_table <- crossTable(large_trans_not1_name)
+cross_table[1:3,1:3]
 
 
 
 ## applying the apriori algorithm
 
-rules <- apriori(large_not1, 
-                 parameter = list(supp = 0.001, conf = 0.6, target = "rules"))
+rules <- apriori(large_trans_not1_name, 
+                 parameter = list(supp = 0.001,   # 17 rules
+                                  conf = 0.6, 
+                                  target = "rules"))
 
-inspect(rules)
+rules <- apriori(large_trans_not1_name, 
+                 parameter = list(supp = 0.0005,   # 59 rules
+                                  conf = 0.5, 
+                                  target = "rules"))
+
 inspect(rules[1:10])
 summary(rules)
 str(rules)
 
 
-frequentItems <- eclat (large_not1, 
-                        parameter = list(supp = 0.01, maxlen = 15))
+## frequent items
 
+frequentItems <- eclat (large_not1, parameter = list(supp = 0.01, maxlen = 15))
 inspect(frequentItems)
+
 
 
 ## checking confidence and lift
 
+rules_conf <- sort(rules, by = "confidence", desc = TRUE)
+inspect(rules_conf[1:10])
 
+rules_lift <- sort(rules, by = "lift", desc = TRUE)
+inspect(rules_lift[1:10])
+
+
+## deleting identical rules
+
+rules1 <- rules
+rules1 %>% filter(c(lhs == NES0009))
 
