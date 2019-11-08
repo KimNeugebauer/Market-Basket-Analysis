@@ -187,7 +187,9 @@ size(head(large_trans_not1_brand, 300))
 
 ## Plotting and imaging the large transactions file
 
-itemFrequencyPlot(large_trans_not1_brand)
+#dev.off()
+
+itemFrequencyPlot(large_trans_not1_brand, topN = 30)
 
 itemFrequencyPlot(large_trans_not1_brand, 
                   topN = 15, 
@@ -221,35 +223,59 @@ cross_table_chi
 ## applying the apriori algorithm
 
 rules <- apriori(large_trans_not1_brand, 
-                 parameter = list(supp = 0.001,   # 17 rules
+                 parameter = list(supp = 0.001,   # 18 rules
                                   conf = 0.6, 
-                                  target = "rules"))
+                                  target = "rules"),
+                 control = list())
 
 rules <- apriori(large_trans_not1_brand, 
-                 parameter = list(supp = 0.0005,   # 57 rules
+                 parameter = list(supp = 0.0005,   # 47 rules
                                   conf = 0.5, 
-                                  target = "rules"))
+                                  target = "rules"),
+                 control = list())
 
+rules
 inspect(rules[1:10])
 
 summary(rules)
 str(rules)
 
 
+
+## removing redundant rules with is.redundant ()
+
+redundant_rules <- is.redundant(rules)
+summary(redundant_rules)
+
+rules <- rules[!redundant_rules]
+length(rules)
+
+## removing redundant rules - second option
+
+redundant_rules <- which(colSums(is.subset(rules)) >1)
+length(redundant_rules)
+
+rules <- rules[- redundant_rules]
+length(rules)
+
+
+
 ## applying the apriori algorithm for rules that lead to buying apple accessories
 
 rules_apple_acc <- apriori(large_trans_not1_brand, 
-                          parameter = list(supp = 0.0005,   # 57 rules
+                          parameter = list(supp = 0.0005,   # 5 rules
                                   conf = 0.5, 
                                   target = "rules"),
                           appearance = list(rhs = "Apple accessories", 
-                                   default = "lhs"))
+                                  default = "lhs"), 
+                          control = list())
 
 
 inspect(rules_apple_acc)
 
 summary(rules_apple_acc)
 str(rules_apple_acc)
+
 
 
 ## frequent items
